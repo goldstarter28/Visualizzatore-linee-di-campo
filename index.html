@@ -1,0 +1,998 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport"
+      content="width=device-width, initial-scale=1.0,
+               maximum-scale=1.0, user-scalable=no">
+<title>Campo elettrico - Due cariche</title>
+<style>
+    /* =====================================================
+       STILE GENERALE
+       ===================================================== */
+    * {
+        box-sizing: border-box;
+        -webkit-tap-highlight-color: transparent;
+    }
+    body {
+        margin: 0;
+        background: #111;
+        color: white;
+        font-family: Arial, sans-serif;
+        display: flex;
+        flex-direction: column;
+        height: 100vh;
+        overflow: hidden;
+    }
+    /* =====================================================
+       TITOLO
+       ===================================================== */
+    #titolo {
+        text-align: center;
+        padding: 10px;
+        font-size: 18px;
+        font-weight: bold;
+    }
+    /* =====================================================
+       AREA DEL GRAFICO
+       ===================================================== */
+    #canvasContainer {
+        position: relative;
+        flex: 1;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        min-height: 0;
+    }
+    canvas {
+        background: #101820;
+        width: 100%;
+        height: 100%;
+        touch-action: none;
+    }
+    /* =====================================================
+       PANNELLO DEI CONTROLLI
+       ===================================================== */
+    #controls {
+        background: #202020;
+        padding: 12px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+    }
+    /* =====================================================
+       SELETTORE DELLA CARICA
+       ===================================================== */
+    #selectedText {
+        text-align: center;
+        font-size: 15px;
+    }
+    /* =====================================================
+       BOTTONI + E -
+       ===================================================== */
+    .row {
+        display: flex;
+        gap: 10px;
+        justify-content: center;
+    }
+    button {
+        border: none;
+        border-radius: 10px;
+        padding: 12px 25px;
+        font-size: 20px;
+        font-weight: bold;
+        color: white;
+        cursor: pointer;
+        touch-action: manipulation;
+    }
+    #positive {
+        background: #d62828;
+    }
+    #negative {
+        background: #2455c3;
+    }
+    /* =====================================================
+       SLIDER DELLA CARICA
+       ===================================================== */
+    #sliderContainer {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+    #chargeSlider {
+        flex: 1;
+        height: 35px;
+        accent-color: #ffffff;
+    }
+    #chargeValue {
+        width: 90px;
+        text-align: center;
+        font-size: 16px;
+        font-weight: bold;
+    }
+    /* =====================================================
+       ISTRUZIONI
+       ===================================================== */
+    #instructions {
+        text-align: center;
+        color: #aaa;
+        font-size: 12px;
+    }
+    /* =====================================================
+       MADE BY PADO
+       ===================================================== */
+    .made-by {
+        position: fixed;
+        bottom: 8px;
+        right: 12px;
+        font-size: 12px;
+        color: #777;
+        font-family: Arial, sans-serif;
+        opacity: 0.8;
+        pointer-events: none;
+        z-index: 1000;
+    }
+</style>
+</head>
+<body>
+<!-- =====================================================
+     TITOLO
+     ===================================================== -->
+<div id="titolo">
+    Campo elettrico di due cariche
+</div>
+<!-- =====================================================
+     GRAFICO
+     ===================================================== -->
+<div id="canvasContainer">
+    <canvas id="canvas"></canvas>
+</div>
+<!-- =====================================================
+     CONTROLLI
+     ===================================================== -->
+<div id="controls">
+    <div id="selectedText">
+        Carica selezionata: <b>q₁</b>
+    </div>
+    <!-- BOTTONI POSITIVO / NEGATIVO -->
+    <div class="row">
+        <button id="positive">
+            + Positiva
+        </button>
+        <button id="negative">
+            − Negativa
+        </button>
+    </div>
+    <!-- SLIDER -->
+    <div id="sliderContainer">
+        <span>Valore:</span>
+        <input
+            id="chargeSlider"
+            type="range"
+            min="0"
+            max="100"
+            step="1"
+            value="10"
+        >
+        <div id="chargeValue">
+            +1.0 nC
+        </div>
+    </div>
+    <div id="instructions">
+        Tocca una carica per selezionarla.
+        Trascinala con il dito per spostarla.
+    </div>
+</div>
+<!-- =====================================================
+     FIRMA
+     ===================================================== -->
+<div class="made-by">made by pado</div>
+<script>
+/* =========================================================
+   COSTANTE DI COULOMB
+   ========================================================= */
+const k = 9e9;
+/* =========================================================
+   CANVAS
+   ========================================================= */
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+/* =========================================================
+   CARICHE
+   =========================================================
+   x e y sono coordinate fisiche in metri.
+   q è espressa in Coulomb.
+   ========================================================= */
+let charges = [
+    {
+        x: -1,
+        y: 0,
+        q: 1e-9,
+        name: "q₁"
+    },
+    {
+        x: 1,
+        y: 0,
+        q: -1e-9,
+        name: "q₂"
+    }
+];
+/* =========================================================
+   CARICA SELEZIONATA
+   ========================================================= */
+let selectedCharge = 0;
+/* =========================================================
+   SCALA DEL PIANO
+   =========================================================
+   Quanti pixel rappresentano un metro.
+   ========================================================= */
+let scale = 80;
+/* =========================================================
+   DIMENSIONI CANVAS
+   ========================================================= */
+function resizeCanvas() {
+    const rect = canvas.getBoundingClientRect();
+    canvas.width = rect.width *
+                   window.devicePixelRatio;
+    canvas.height = rect.height *
+                    window.devicePixelRatio;
+    ctx.setTransform(
+        window.devicePixelRatio,
+        0,
+        0,
+        window.devicePixelRatio,
+        0,
+        0
+    );
+    draw();
+}
+window.addEventListener(
+    "resize",
+    resizeCanvas
+);
+/* =========================================================
+   CONVERSIONE:
+   METRI → PIXEL
+   ========================================================= */
+function toScreen(x, y) {
+    const width =
+        canvas.getBoundingClientRect().width;
+    const height =
+        canvas.getBoundingClientRect().height;
+    return {
+        x: width / 2 + x * scale,
+        y: height / 2 - y * scale
+    };
+}
+/* =========================================================
+   CONVERSIONE:
+   PIXEL → METRI
+   ========================================================= */
+function toWorld(px, py) {
+    const width =
+        canvas.getBoundingClientRect().width;
+    const height =
+        canvas.getBoundingClientRect().height;
+    return {
+        x: (px - width / 2) / scale,
+        y: -(py - height / 2) / scale
+    };
+}
+/* =========================================================
+   CALCOLO DEL CAMPO ELETTRICO
+   ========================================================= */
+function electricField(x, y) {
+    let Ex = 0;
+    let Ey = 0;
+    for (const charge of charges) {
+        const dx = x - charge.x;
+        const dy = y - charge.y;
+        let r2 =
+            dx * dx +
+            dy * dy;
+        /*
+         * Evitiamo la singolarità r = 0.
+         */
+        r2 = Math.max(
+            r2,
+            0.0025
+        );
+        const r =
+            Math.sqrt(r2);
+        /*
+         * Formula:
+         * E = k q / r³ · r_vec
+         */
+        Ex +=
+            k *
+            charge.q *
+            dx /
+            Math.pow(r, 3);
+        Ey +=
+            k *
+            charge.q *
+            dy /
+            Math.pow(r, 3);
+    }
+    return {
+        x: Ex,
+        y: Ey
+    };
+}
+/* =========================================================
+   DISEGNO DELLA GRIGLIA
+   ========================================================= */
+function drawGrid() {
+    const width =
+        canvas.getBoundingClientRect().width;
+    const height =
+        canvas.getBoundingClientRect().height;
+    ctx.strokeStyle =
+        "rgba(255,255,255,0.12)";
+    ctx.lineWidth = 1;
+    /*
+     * Linee verticali
+     */
+    for (
+        let x = width / 2;
+        x < width;
+        x += scale
+    ) {
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, height);
+        ctx.stroke();
+    }
+    for (
+        let x = width / 2 - scale;
+        x > 0;
+        x -= scale
+    ) {
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, height);
+        ctx.stroke();
+    }
+    /*
+     * Linee orizzontali
+     */
+    for (
+        let y = height / 2;
+        y < height;
+        y += scale
+    ) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(width, y);
+        ctx.stroke();
+    }
+    for (
+        let y = height / 2 - scale;
+        y > 0;
+        y -= scale
+    ) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(width, y);
+        ctx.stroke();
+    }
+    /*
+     * Asse X
+     */
+    ctx.strokeStyle =
+        "rgba(255,255,255,0.6)";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(0, height / 2);
+    ctx.lineTo(width, height / 2);
+    ctx.stroke();
+    /*
+     * Asse Y
+     */
+    ctx.beginPath();
+    ctx.moveTo(width / 2, 0);
+    ctx.lineTo(width / 2, height);
+    ctx.stroke();
+}
+/* =========================================================
+   DISEGNO DEL CAMPO VETTORIALE
+   ========================================================= */
+function drawVectors() {
+    const width =
+        canvas.getBoundingClientRect().width;
+    const height =
+        canvas.getBoundingClientRect().height;
+    /*
+     * Distanza tra le frecce.
+     */
+    const spacing = 35;
+    for (
+        let px = spacing / 2;
+        px < width;
+        px += spacing
+    ) {
+        for (
+            let py = spacing / 2;
+            py < height;
+            py += spacing
+        ) {
+            const world =
+                toWorld(px, py);
+            const E =
+                electricField(
+                    world.x,
+                    world.y
+                );
+            const magnitude =
+                Math.sqrt(
+                    E.x * E.x +
+                    E.y * E.y
+                );
+            if (!isFinite(magnitude))
+                continue;
+            /*
+             * Normalizziamo il vettore.
+             *
+             * In questo modo la lunghezza delle
+             * frecce non esplode vicino alle cariche.
+             */
+            const maxLength = 13;
+            const length =
+                Math.min(
+                    maxLength,
+                    5 +
+                    Math.log10(
+                        magnitude + 1
+                    ) * 2
+                );
+            const ux =
+                E.x / (magnitude || 1);
+            const uy =
+                E.y / (magnitude || 1);
+            /*
+             * Nel canvas Y cresce verso il basso,
+             * quindi invertiamo uy.
+             */
+            const dx =
+                ux * length;
+            const dy =
+                -uy * length;
+            /*
+             * Disegniamo la freccia.
+             */
+            ctx.strokeStyle =
+                "rgba(255,255,255,0.55)";
+            ctx.fillStyle =
+                "rgba(255,255,255,0.55)";
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(
+                px - dx,
+                py - dy
+            );
+            ctx.lineTo(
+                px + dx,
+                py + dy
+            );
+            ctx.stroke();
+            /*
+             * Punta della freccia
+             */
+            const angle =
+                Math.atan2(dy, dx);
+            ctx.beginPath();
+            ctx.moveTo(
+                px + dx,
+                py + dy
+            );
+            ctx.lineTo(
+                px + dx -
+                5 * Math.cos(angle - 0.5),
+                py + dy -
+                5 * Math.sin(angle - 0.5)
+            );
+            ctx.lineTo(
+                px + dx -
+                5 * Math.cos(angle + 0.5),
+                py + dy -
+                5 * Math.sin(angle + 0.5)
+            );
+            ctx.closePath();
+            ctx.fill();
+        }
+    }
+}
+/* =========================================================
+   LINEE DI CAMPO
+   =========================================================
+   Qui integriamo numericamente la direzione del campo.
+   Partiamo da molti punti e seguiamo la direzione di E.
+   ========================================================= */
+function drawFieldLines() {
+    /*
+     * Generiamo punti di partenza
+     * distribuiti sul bordo del piano.
+     */
+    const seeds = [];
+    const radius = 3.8;
+    const number = 32;
+    for (
+        let i = 0;
+        i < number;
+        i++
+    ) {
+        const angle =
+            2 * Math.PI *
+            i / number;
+        seeds.push({
+            x: radius * Math.cos(angle),
+            y: radius * Math.sin(angle)
+        });
+    }
+    /*
+     * Inoltre facciamo partire linee
+     * vicino alle cariche positive.
+     */
+    for (const charge of charges) {
+        if (charge.q > 0) {
+            for (
+                let i = 0;
+                i < 16;
+                i++
+            ) {
+                const angle =
+                    2 * Math.PI *
+                    i / 16;
+                seeds.push({
+                    x:
+                        charge.x +
+                        0.12 *
+                        Math.cos(angle),
+                    y:
+                        charge.y +
+                        0.12 *
+                        Math.sin(angle)
+                });
+            }
+        }
+    }
+    /*
+     * Disegniamo ogni linea.
+     */
+    for (const seed of seeds) {
+        drawOneFieldLine(
+            seed.x,
+            seed.y
+        );
+    }
+}
+/* =========================================================
+   SINGOLA LINEA DI CAMPO
+   ========================================================= */
+function drawOneFieldLine(
+    startX,
+    startY
+) {
+    let x = startX;
+    let y = startY;
+    ctx.beginPath();
+    let started = false;
+    /*
+     * Numero massimo di passi.
+     */
+    for (
+        let step = 0;
+        step < 500;
+        step++
+    ) {
+        const E =
+            electricField(x, y);
+        const magnitude =
+            Math.sqrt(
+                E.x * E.x +
+                E.y * E.y
+            );
+        if (
+            !isFinite(magnitude) ||
+            magnitude < 1e-12
+        ) {
+            break;
+        }
+        /*
+         * Se siamo troppo vicini a una carica
+         * interrompiamo la linea.
+         */
+        let vicino = false;
+        for (const charge of charges) {
+            const dx =
+                x - charge.x;
+            const dy =
+                y - charge.y;
+            const r =
+                Math.sqrt(
+                    dx * dx +
+                    dy * dy
+                );
+            if (r < 0.08) {
+                vicino = true;
+            }
+        }
+        if (vicino)
+            break;
+        /*
+         * Direzione del campo.
+         */
+        const ux =
+            E.x / magnitude;
+        const uy =
+            E.y / magnitude;
+        /*
+         * Passo in metri.
+         */
+        const stepSize = 0.025;
+        x += ux * stepSize;
+        y += uy * stepSize;
+        /*
+         * Convertiamo in pixel.
+         */
+        const screen =
+            toScreen(x, y);
+        if (!started) {
+            ctx.moveTo(
+                screen.x,
+                screen.y
+            );
+            started = true;
+        }
+        else {
+            ctx.lineTo(
+                screen.x,
+                screen.y
+            );
+        }
+        /*
+         * Se usciamo dal piano,
+         * interrompiamo.
+         */
+        if (
+            x < -5 ||
+            x > 5 ||
+            y < -5 ||
+            y > 5
+        ) {
+            break;
+        }
+    }
+    ctx.strokeStyle =
+        "rgba(255,180,50,0.65)";
+    ctx.lineWidth = 1.2;
+    ctx.stroke();
+}
+/* =========================================================
+   DISEGNO DELLE CARICHE
+   ========================================================= */
+function drawCharges() {
+    charges.forEach(
+        (charge, index) => {
+            const p =
+                toScreen(
+                    charge.x,
+                    charge.y
+                );
+            /*
+             * Colore:
+             *
+             * rosso = positiva
+             * blu   = negativa
+             */
+            const color =
+                charge.q >= 0
+                    ? "#e63946"
+                    : "#2774d9";
+            /*
+             * Cerchio esterno.
+             */
+            ctx.beginPath();
+            ctx.arc(
+                p.x,
+                p.y,
+                22,
+                0,
+                2 * Math.PI
+            );
+            ctx.fillStyle =
+                color;
+            ctx.fill();
+            /*
+             * Bordo diverso per la carica selezionata.
+             */
+            ctx.lineWidth =
+                index === selectedCharge
+                    ? 4
+                    : 2;
+            ctx.strokeStyle =
+                index === selectedCharge
+                    ? "white"
+                    : "#111";
+            ctx.stroke();
+            /*
+             * Simbolo + o -
+             */
+            ctx.fillStyle =
+                "white";
+            ctx.font =
+                "bold 22px Arial";
+            ctx.textAlign =
+                "center";
+            ctx.textBaseline =
+                "middle";
+            ctx.fillText(
+                charge.q >= 0
+                    ? "+"
+                    : "−",
+                p.x,
+                p.y
+            );
+            /*
+             * Nome della carica.
+             */
+            ctx.font =
+                "bold 14px Arial";
+            ctx.fillText(
+                charge.name,
+                p.x,
+                p.y - 35
+            );
+        }
+    );
+}
+/* =========================================================
+   DISEGNO COMPLETO
+   ========================================================= */
+function draw() {
+    const width =
+        canvas.getBoundingClientRect().width;
+    const height =
+        canvas.getBoundingClientRect().height;
+    ctx.clearRect(
+        0,
+        0,
+        width,
+        height
+    );
+    drawGrid();
+    drawFieldLines();
+    drawVectors();
+    drawCharges();
+}
+/* =========================================================
+   SELEZIONE DELLA CARICA CON TOUCH / MOUSE
+   ========================================================= */
+let dragging = false;
+/*
+ * Restituisce la posizione del dito/mouse
+ * relativa al canvas.
+ */
+function pointerPosition(event) {
+    const rect =
+        canvas.getBoundingClientRect();
+    return {
+        x:
+            event.clientX -
+            rect.left,
+        y:
+            event.clientY -
+            rect.top
+    };
+}
+/* =========================================================
+   INIZIO DEL TRASCINAMENTO
+   ========================================================= */
+canvas.addEventListener(
+    "pointerdown",
+    function(event) {
+        const p =
+            pointerPosition(event);
+        /*
+         * Controlliamo quale carica è stata toccata.
+         */
+        for (
+            let i = 0;
+            i < charges.length;
+            i++
+        ) {
+            const charge =
+                charges[i];
+            const screen =
+                toScreen(
+                    charge.x,
+                    charge.y
+                );
+            const dx =
+                p.x - screen.x;
+            const dy =
+                p.y - screen.y;
+            const distance =
+                Math.sqrt(
+                    dx * dx +
+                    dy * dy
+                );
+            if (distance < 35) {
+                selectedCharge = i;
+                dragging = true;
+                canvas.setPointerCapture(
+                    event.pointerId
+                );
+                updateControls();
+                draw();
+                return;
+            }
+        }
+    }
+);
+/* =========================================================
+   MOVIMENTO DEL DITO / MOUSE
+   ========================================================= */
+canvas.addEventListener(
+    "pointermove",
+    function(event) {
+        if (!dragging)
+            return;
+        const p =
+            pointerPosition(event);
+        const world =
+            toWorld(
+                p.x,
+                p.y
+            );
+        /*
+         * Spostiamo la carica selezionata.
+         */
+        charges[selectedCharge].x =
+            world.x;
+        charges[selectedCharge].y =
+            world.y;
+        draw();
+    }
+);
+/* =========================================================
+   FINE DEL TRASCINAMENTO
+   ========================================================= */
+canvas.addEventListener(
+    "pointerup",
+    function(event) {
+        dragging = false;
+        try {
+            canvas.releasePointerCapture(
+                event.pointerId
+            );
+        }
+        catch {}
+    }
+);
+/* =========================================================
+   BOTTONE POSITIVO
+   ========================================================= */
+document
+    .getElementById("positive")
+    .addEventListener(
+        "click",
+        function() {
+            const charge =
+                charges[selectedCharge];
+            /*
+             * Manteniamo lo stesso valore assoluto
+             * ma rendiamo q positiva.
+             */
+            charge.q =
+                Math.abs(charge.q);
+            if (charge.q === 0) {
+                charge.q = 1e-9;
+            }
+            updateControls();
+            draw();
+        }
+    );
+/* =========================================================
+   BOTTONE NEGATIVO
+   ========================================================= */
+document
+    .getElementById("negative")
+    .addEventListener(
+        "click",
+        function() {
+            const charge =
+                charges[selectedCharge];
+            /*
+             * Manteniamo lo stesso valore assoluto
+             * ma rendiamo q negativa.
+             */
+            charge.q =
+                -Math.abs(charge.q);
+            if (charge.q === 0) {
+                charge.q = -1e-9;
+            }
+            updateControls();
+            draw();
+        }
+    );
+/* =========================================================
+   SLIDER DEL VALORE DELLA CARICA
+   ========================================================= */
+const slider =
+    document.getElementById(
+        "chargeSlider"
+    );
+slider.addEventListener(
+    "input",
+    function() {
+        const value =
+            Number(slider.value);
+        /*
+         * Lo slider va da 0 a 100.
+         *
+         * Ogni unità corrisponde a 0.1 nC.
+         *
+         * Quindi:
+         *
+         * 10 → 1 nC
+         * 50 → 5 nC
+         * 100 → 10 nC
+         */
+        const magnitude =
+            value * 0.1e-9;
+        const sign =
+            charges[selectedCharge].q >= 0
+                ? 1
+                : -1;
+        charges[selectedCharge].q =
+            sign * magnitude;
+        updateControls();
+        draw();
+    }
+);
+/* =========================================================
+   AGGIORNAMENTO DEI CONTROLLI
+   ========================================================= */
+function updateControls() {
+    const charge =
+        charges[selectedCharge];
+    /*
+     * Testo della carica selezionata.
+     */
+    document
+        .getElementById("selectedText")
+        .innerHTML =
+            `Carica selezionata:
+             <b>${charge.name}</b>`;
+    /*
+     * Valore assoluto in nC.
+     */
+    const magnitude =
+        Math.abs(charge.q)
+        * 1e9;
+    slider.value =
+        Math.round(
+            magnitude * 10
+        );
+    /*
+     * Mostriamo il valore.
+     */
+    const sign =
+        charge.q >= 0
+            ? "+"
+            : "−";
+    document
+        .getElementById("chargeValue")
+        .textContent =
+            `${sign}${magnitude.toFixed(1)} nC`;
+}
+/* =========================================================
+   AVVIO
+   ========================================================= */
+resizeCanvas();
+updateControls();
+draw();
+</script>
+</body>
+</html>
